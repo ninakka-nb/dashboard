@@ -164,7 +164,7 @@ export default {
 </script>
 
 <template>
-  <header>
+  <header class="with-subheader">
     <slot name="typeDescription">
       <TypeDescription :resource="resource" />
     </slot>
@@ -181,28 +181,33 @@ export default {
         :indeterminate="loadIndeterminate"
       />
     </div>
+    <div class="sub-header">
+      <slot name="subHeader">
+        <!--Slot content-->
+      </slot>
+    </div>
     <div class="actions-container">
       <slot name="actions">
         <div class="actions">
           <slot name="extraActions" />
 
           <slot name="createButton">
-            <n-link
+            <router-link
               v-if="hasEditComponent && _isCreatable"
               :to="_createLocation"
               class="btn role-primary"
               :data-testid="componentTestid+'-create'"
             >
               {{ _createButtonlabel }}
-            </n-link>
-            <n-link
+            </router-link>
+            <router-link
               v-else-if="_isYamlCreatable"
               :to="_yamlCreateLocation"
               class="btn role-primary"
               :data-testid="componentTestid+'-create-yaml'"
             >
               {{ t("resourceList.head.createFromYaml") }}
-            </n-link>
+            </router-link>
           </slot>
         </div>
       </slot>
@@ -221,5 +226,17 @@ export default {
 
   header {
     margin-bottom: 20px;
+  }
+
+  header.with-subheader {
+    grid-template-areas:
+      'type-banner type-banner'
+      'title actions'
+      'sub-header sub-header'
+      'state-banner state-banner';
+  }
+
+  .sub-header {
+    grid-area: sub-header;
   }
 </style>

@@ -11,7 +11,6 @@ import { getVendor, getProduct, setVendor } from '@shell/config/private-label';
 import { RadioGroup } from '@components/Form/Radio';
 import { setSetting } from '@shell/utils/settings';
 import { SETTING } from '@shell/config/settings';
-import { _ALL_IF_AUTHED } from '@shell/plugins/dashboard-store/actions';
 import { isDevBuild } from '@shell/utils/version';
 import { exceptionToErrorsArray } from '@shell/utils/error';
 import Password from '@shell/components/form/Password';
@@ -22,6 +21,7 @@ import { Banner } from '@components/Banner';
 import FormValidation from '@shell/mixins/form-validation';
 import isUrl from 'is-url';
 import { isLocalhost } from '@shell/utils/validators/setting';
+import Loading from '@shell/components/Loading';
 
 const calcIsFirstLogin = (store) => {
   const firstLoginSetting = store.getters['management/byId'](MANAGEMENT.SETTING, SETTING.FIRST_LOGIN);
@@ -49,22 +49,32 @@ export default {
         path:       'serverUrl',
         rootObject: this,
         rules:      ['required', 'https', 'url', 'trailingForwardSlash']
-      }]
+      }],
+      productName: '',
+      vendor:      getVendor(),
+      product:     getProduct(),
+      step:        parseInt(this.$route.query.step, 10) || 1,
+
+      useRandom:          true,
+      haveCurrent:        false,
+      username:           null,
+      isFirstLogin:       false,
+      mustChangePassword: false,
+      current:            null,
+      password:           randomStr(),
+      confirm:            null,
+      v3User:             null,
+      serverUrl:          null,
+      mcmEnabled:         null,
+      telemetry:          null,
+      eula:               false,
+      principals:         null,
+      errors:             []
     };
   },
 
-  async middleware({ store, redirect, route } ) {
-    try {
-      await store.dispatch('management/findAll', {
-        type: MANAGEMENT.SETTING,
-        opt:  {
-          load: _ALL_IF_AUTHED, url: `/v1/${ MANAGEMENT.SETTING }`, redirectUnauthorized: false
-        }
-      });
-    } catch (e) {
-    }
-
-    const isFirstLogin = await calcIsFirstLogin(store);
+  async middleware({ store, redirect } ) {
+    const isFirstLogin = calcIsFirstLogin(store);
     const mustChangePassword = await calcMustChangePassword(store);
 
     if (isFirstLogin) {
@@ -87,13 +97,13 @@ export default {
   },
 
   components: {
-    AsyncButton, LabeledInput, CopyToClipboard, Checkbox, RadioGroup, Password, BrandImage, Banner
+    AsyncButton, LabeledInput, CopyToClipboard, Checkbox, RadioGroup, Password, BrandImage, Banner, Loading
   },
 
-  async asyncData({ route, req, store }) {
-    const telemetrySetting = store.getters['management/byId'](MANAGEMENT.SETTING, SETTING.TELEMETRY);
-    const serverUrlSetting = store.getters['management/byId'](MANAGEMENT.SETTING, SETTING.SERVER_URL);
-    const rancherVersionSetting = store.getters['management/byId'](MANAGEMENT.SETTING, SETTING.VERSION_RANCHER);
+  async fetch() {
+    const telemetrySetting = this.$store.getters['management/byId'](MANAGEMENT.SETTING, SETTING.TELEMETRY);
+    const serverUrlSetting = this.$store.getters['management/byId'](MANAGEMENT.SETTING, SETTING.SERVER_URL);
+    const rancherVersionSetting = this.$store.getters['management/byId'](MANAGEMENT.SETTING, SETTING.VERSION_RANCHER);
     let telemetry = true;
 
     if (telemetrySetting?.value && telemetrySetting.value !== 'prompt') {
@@ -105,18 +115,11 @@ export default {
     let plSetting;
 
     try {
-      await store.dispatch('management/findAll', {
-        type: MANAGEMENT.SETTING,
-        opt:  {
-          load: _ALL_IF_AUTHED, url: `/v1/${ MANAGEMENT.SETTING }`, redirectUnauthorized: false
-        },
-      });
-
-      plSetting = store.getters['management/byId'](MANAGEMENT.SETTING, SETTING.PL);
+      plSetting = this.$store.getters['management/byId'](MANAGEMENT.SETTING, SETTING.PL);
     } catch (e) {
       // Older versions used Norman API to get these
-      plSetting = await store.dispatch('rancher/find', {
-        type: 'setting',
+      plSetting = await this.$store.dispatch('rancher/find', {
+        type: NORMAN.SETTING,
         id:   SETTING.PL,
         opt:  { url: `/v3/settings/${ SETTING.PL }` }
       });
@@ -128,13 +131,13 @@ export default {
 
     const productName = plSetting.default;
 
-    const principals = await store.dispatch('rancher/findAll', { type: NORMAN.PRINCIPAL, opt: { url: '/v3/principals' } });
+    const principals = await this.$store.dispatch('rancher/findAll', { type: NORMAN.PRINCIPAL, opt: { url: '/v3/principals' } });
     const me = findBy(principals, 'me', true);
 
-    const current = route.query[SETUP] || store.getters['auth/initialPass'];
-    const v3User = store.getters['auth/v3User'] ?? {};
+    const current = this.$route.query[SETUP] || this.$store.getters['auth/initialPass'];
+    const v3User = this.$store.getters['auth/v3User'] ?? {};
 
-    const mcmFeature = await store.dispatch('management/find', {
+    const mcmFeature = await this.$store.dispatch('management/find', {
       type: MANAGEMENT.FEATURE, id: 'multi-cluster-management', opt: { url: `/v1/${ MANAGEMENT.FEATURE }/multi-cluster-management` }
     });
 
@@ -148,36 +151,20 @@ export default {
       serverUrl = window.location.origin;
     }
 
-    const isFirstLogin = await calcIsFirstLogin(store);
-    const mustChangePassword = await calcMustChangePassword(store);
+    const isFirstLogin = await calcIsFirstLogin(this.$store);
+    const mustChangePassword = await calcMustChangePassword(this.$store);
 
-    return {
-      productName,
-      vendor:  getVendor(),
-      product: getProduct(),
-      step:    parseInt(route.query.step, 10) || 1,
-
-      useRandom:   true,
-      haveCurrent: !!current,
-      username:    me?.loginName || 'admin',
-      isFirstLogin,
-      mustChangePassword,
-      current,
-      password:    randomStr(),
-      confirm:     '',
-
-      v3User,
-
-      serverUrl,
-      mcmEnabled,
-
-      telemetry,
-
-      eula: false,
-      principals,
-
-      errors: []
-    };
+    this.$set(this, 'productName', productName);
+    this.$set(this, 'haveCurrent', !!current);
+    this.$set(this, 'username', me?.loginName || 'admin');
+    this.$set(this, 'isFirstLogin', isFirstLogin);
+    this.$set(this, 'mustChangePassword', mustChangePassword);
+    this.$set(this, 'current', current);
+    this.$set(this, 'v3User', v3User);
+    this.$set(this, 'serverUrl', serverUrl);
+    this.$set(this, 'mcmEnabled', mcmEnabled);
+    this.$set(this, 'telemetry', telemetry);
+    this.$set(this, 'principals', principals);
   },
 
   computed: {
@@ -289,7 +276,11 @@ export default {
 </script>
 
 <template>
-  <form class="setup">
+  <Loading v-if="$fetchState.pending" />
+  <form
+    v-else
+    class="setup"
+  >
     <div class="row">
       <div class="col span-6 form-col">
         <div>
@@ -391,12 +382,14 @@ export default {
                   v-if="showLocalhostWarning"
                   color="warning"
                   :label="t('validation.setting.serverUrl.localhost')"
+                  data-testid="setup-serverurl-localhost-warning"
                 />
                 <Banner
                   v-for="(err, i) in fvGetPathErrors(['serverUrl'])"
                   :key="i"
                   color="error"
                   :label="err"
+                  data-testid="setup-error-banner"
                 />
                 <LabeledInput
                   v-model="serverUrl"

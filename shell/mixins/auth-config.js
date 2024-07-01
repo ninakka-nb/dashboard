@@ -55,6 +55,7 @@ export default {
     },
 
     displayName() {
+      // i18n-uses model.authConfig.provider.*
       return this.t(`model.authConfig.provider.${ this.NAME }`);
     },
 
@@ -272,7 +273,7 @@ export default {
 
         // KeyCloakOIDCConfig --> OIDCConfig
         set(this.model, 'rancherUrl', `${ serverUrl }/verify-auth`);
-        set(this.model, 'scope', BASE_SCOPES.keycloakoidc[0]);
+        set(this.model, 'scope', BASE_SCOPES.oidc[0]);
         break;
       }
 

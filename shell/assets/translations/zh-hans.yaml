@@ -366,7 +366,6 @@ authConfig:
     unrestricted: 允许所有用户访问
   allowedPrincipalIds:
     title: 授权的用户和用户组
-  associatedWarning: '注意：你认证的 {provider} 用户将作为你当前登录的 {vendor} 用户（<code>{username}</code>）的替代登录方式。此 {vendor} 用户的所有全局权限、项目和集群角色绑定也将应用到 {provider} 用户。'
   github:
     clientId:
       label: 客户端 ID
@@ -1668,7 +1667,7 @@ cluster:
   banner:
     warning: '此集群包含此表单不完全支持的 machineSelectorConfig。使用 YAML 编辑器管理完整配置。'
     os: '你正在将 {newOS} worker 节点添加到具有一个或多个 {existingOS} worker 节点的集群。你可能需要升级或删除某些已安装的应用。'
-    rke2-k3-reprovisioning: '更改集群配置可能导致节点重新配置。详情请参见 <a target="blank" href="{docsBase}/cluster-provisioning/rke-clusters/behavior-differences-between-rke1-and-rke2/" target="_blank" rel="noopener nofollow">文档</a>。'
+    rke2-k3-reprovisioning: '更改集群配置可能导致节点重新配置。详情请参见 <a target="blank" href="{docsBase}/how-to-guides/new-user-guides/launch-kubernetes-with-rancher/rke1-vs-rke2-differences#cluster-api" target="_blank" rel="noopener nofollow">文档</a>。'
     desiredNodeGroupWarning: 没有可用于运行 Cluster Agent 的节点。要让集群变为 Active 状态，至少需要有 1 个可用的节点。
     haveArgInfo: 所选 Kubernetes 版本的配置信息不可用。此屏幕中可用的选项将受到限制，你可能需要使用 YAML 编辑器。
   rkeTemplateUpgrade: 模板修订版 {name} 可用于升级
@@ -2313,7 +2312,6 @@ glance:
   version: Kubernetes 版本
   monitoringDashboard: 监控仪表板
   installMonitoring: 安装 Monitoring
-  v1MonitoringInstalled: 已安装 Monitoring V1
   clusterInfo: 集群信息
   eventsTable: 完整事件列表
 
@@ -2793,7 +2791,7 @@ logging:
     dockerRootDirectory: Docker 根目录
     systemdLogPath: systemd 日志路径
     tooltip: '某些 Kubernetes 发行版在 <code>journald</code>中记录日志。你需要定义<code>systemdLogPath</code> 以收集日志。默认路径是<code>/run/log/journal</code>，但某些 Linux 发行版不默认使用该路径。'
-    url: '<a href="https://ranchermanager.docs.rancher.com/v2.8/integrations-in-rancher/logging/logging-helm-chart-options" target="_blank" rel="noopener nofollow noreferrer">了解更多</a>'
+    url: '<a href="{docsBase}/integrations-in-rancher/logging/logging-helm-chart-options" target="_blank" rel="noopener nofollow noreferrer">了解更多</a>'
     default: /run/log/journal
   elasticsearch:
     host: 主机
@@ -3062,7 +3060,7 @@ members:
   clusterMembers: 集群成员
   clusterAndProject: 集群和项目成员
   createActionLabel: 添加
-  clusterMemebership: 集群成员
+  clusterMembership: 集群成员
   projectMembership: 项目成员
   clusterPermissions:
     noDescription: 已创建用户 - 没有描述
@@ -3290,15 +3288,6 @@ monitoring:
       bearerTokenSecret: 持有者令牌密文
       basicAuthUsername: 具有基本认证用户名的密文
       basicAuthPassword: 具有基本认证密码的密文
-  installSteps:
-    uninstallV1:
-      stepTitle: 卸载 V1
-      stepSubtext: 卸载旧版 Monitoring
-      warning1: 已部署 Monitoring V1。你需要先卸载 Monitoring V1 才能安装 Monitoring V2。
-      warning2: <a target="blank" href="{docsBase}/monitoring-alerting/guides/migrating/" target='_blank' rel='noopener nofollow'>了解迁移到 Monitoring V2 的步骤</a>。
-      promptDescription: <div class="mt-20 mb-20">你正在尝试卸载 Monitoring V1。请确保你已阅读迁移步骤。</div>
-      success1:  Monitoring V1 已成功卸载。
-      success2: 点击下一步继续
   tabs:
     alerting: 告警
     general: 通用
@@ -6964,7 +6953,7 @@ podAffinity:
 keyValue:
   keyPlaceholder: 例如：foo
   valuePlaceholder: 例如：bar
-  protip: '把多行 <em>key=value</em> 或 <em>key: value</em> 键值对复制到各字段中，以便批量输入'
+  protip: '把多行 <em>key=value</em> 或 <em>key:value</em> 键值对复制到各字段中，以便批量输入'
 
 registryMirror:
   header: Mirror
@@ -7115,7 +7104,7 @@ performance:
     checkboxLabel: 禁用 WebSocket 通知
   gc:
     label: 资源垃圾回收
-    description: UI 将在本地缓存 kuberentes 资源，避免这些资源被重新抓取。在某些情况下，这可能会导致浏览器中存储了大量数据。你可以启用此设置进行定期删除。
+    description: UI 将在本地缓存 Kubernetes 资源，避免这些资源被重新抓取。在某些情况下，这可能会导致浏览器中存储了大量数据。你可以启用此设置进行定期删除。
     checkboxLabel: 启用垃圾回收
     whenRun:
       description: 垃圾回收运行的时候更新
@@ -7338,17 +7327,6 @@ support:
 embedding:
   retry: 重试
   unavailable: Cluster Manager UI 不可用
-
-v1ClusterTools:
-  monitoring:
-    label: Monitoring（旧版）
-    description: '旧版 Monitoring V1。自 Rancher 2.5.0 起，我们已弃用 Monitoring V1。了解<a target="blank" href="{docsBase}/monitoring-alerting/guides/migrating/">迁移到 Monitoring V2 的步骤</a>。'
-  logging:
-    label: Logging（旧版）
-    description: '旧版 Logging V1。自 Rancher 2.5.0 起，我们已弃用 Logging V1。了解<a target="blank" href="{docsBase}/logging/migrating/">迁移到 Logging V2 的步骤</a>。'
-  istio:
-    label: Istio（旧版）
-    description: '旧版 Istio V1。自 Rancher 2.5.0 起，我们已弃用 Istio V1.5。了解<a target="blank" href="{docsBase}/istio/#migrate-from-previous-istio-version">迁移到最新版本</a> 的更多信息。'
 
 legacy:
   alerts: 告警

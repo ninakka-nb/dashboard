@@ -6,6 +6,7 @@ import { CATALOG, MANAGEMENT } from '@shell/config/types';
 import { CATALOG as CATALOG_ANNOTATIONS } from '@shell/config/labels-annotations';
 import { UI_PLUGIN_NAMESPACE } from '@shell/config/uiplugins';
 import Banner from '@components/Banner/Banner.vue';
+import { SETTING } from '@shell/config/settings';
 
 // Note: This dialog handles installation and update of a plugin
 
@@ -20,7 +21,7 @@ export default {
   async fetch() {
     this.defaultRegistrySetting = await this.$store.dispatch('management/find', {
       type: MANAGEMENT.SETTING,
-      id:   'system-default-registry'
+      id:   SETTING.SYSTEM_DEFAULT_REGISTRY,
     });
   },
 
@@ -34,6 +35,7 @@ export default {
       update:                 false,
       mode:                   '',
       showModal:              false,
+      chartVersionInfo:       null
     };
   },
 
@@ -66,6 +68,10 @@ export default {
 
     buttonMode() {
       return this.update ? 'update' : 'install';
+    },
+
+    chartVersionLoadsWithoutAuth() {
+      return this.chartVersionInfo?.values?.plugin?.noAuth;
     }
   },
 
@@ -107,6 +113,32 @@ export default {
       this.showModal = true;
     },
 
+    async loadVersionInfo() {
+      try {
+        this.busy = true;
+        const plugin = this.plugin;
+
+        // Find the version that the user wants to install
+        const version = plugin.versions?.find((v) => v.version === this.version);
+
+        if (!version) {
+          this.busy = false;
+
+          return;
+        }
+
+        this.chartVersionInfo = await this.$store.dispatch('catalog/getVersionInfo', {
+          repoType:    version.repoType,
+          repoName:    version.repoName,
+          chartName:   plugin.chart.chartName,
+          versionName: this.version,
+        });
+      } catch (e) {
+      } finally {
+        this.busy = false;
+      }
+    },
+
     closeDialog(result) {
       this.showModal = false;
       this.$emit('closed', result);
@@ -128,21 +160,9 @@ export default {
         return;
       }
 
+      const image = this.chartVersionInfo?.values?.image?.repository || '';
       // is the image used by the chart in the rancher org?
-      let isRancherImage = false;
-
-      try {
-        const chartVersionInfo = await this.$store.dispatch('catalog/getVersionInfo', {
-          repoType:    version.repoType,
-          repoName:    version.repoName,
-          chartName:   plugin.chart.chartName,
-          versionName: this.version,
-        });
-
-        const image = chartVersionInfo?.values?.image?.repository || '';
-
-        isRancherImage = image.startsWith('rancher/');
-      } catch (e) {}
+      const isRancherImage = image.startsWith('rancher/');
 
       // See if there is already a plugin with this name
       let exists = false;
@@ -213,6 +233,12 @@ export default {
         this.closeDialog(plugin);
       }
     }
+  },
+  watch: {
+    version() {
+      this.chartVersionInfo = null;
+      this.loadVersionInfo();
+    }
   }
 };
 </script>
@@ -237,6 +263,11 @@ export default {
           <p>
             {{ t(`plugins.${ mode }.prompt`) }}
           </p>
+          <Banner
+            v-if="chartVersionLoadsWithoutAuth"
+            color="warning"
+            :label="t('plugins.warnNoAuth')"
+          />
           <Banner
             v-if="!plugin.certified"
             color="warning"

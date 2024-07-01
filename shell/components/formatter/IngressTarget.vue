@@ -18,7 +18,12 @@ export default {
   },
 
   async fetch() {
-    const promises = Object.values(WORKLOAD_TYPES).map((type) => this.$store.dispatch('cluster/findAll', { type }));
+    let promises = [];
+
+    if (!this.$store.getters[`cluster/paginationEnabled`]()) {
+      // This is only used by shell/models/networking.k8s.io.ingress.js `targetTo`, where we do some dodgy matching of workloads with name 'ingress-'
+      promises = Object.values(WORKLOAD_TYPES).map((type) => this.$store.dispatch('cluster/findAll', { type }));
+    }
     const ingressSchema = this.$store.getters[`cluster/schemaFor`](INGRESS);
 
     if (ingressSchema) {
@@ -43,7 +48,7 @@ export default {
 
 <template>
   <div
-    v-if="value"
+    v-if="value && !$fetchState.pending"
     class="ingress-target"
     :reactivity="workloads.length"
   >
@@ -54,12 +59,12 @@ export default {
     >
       <IngressFullPath :row="path" />
       <i class="icon icon-chevron-right" />
-      <nuxt-link
+      <router-link
         v-if="path.serviceName && path.serviceTargetTo"
         :to="path.serviceTargetTo"
       >
         {{ path.serviceName }}
-      </nuxt-link>
+      </router-link>
       <span v-else-if="path.serviceName">
         {{ path.serviceName }}
       </span>
@@ -69,12 +74,12 @@ export default {
       class="target"
     >
       {{ t('ingress.target.default') }} <i class="icon icon-chevron-right" />
-      <nuxt-link
+      <router-link
         v-if="defaultService.targetTo"
         :to="defaultService.targetTo"
       >
         {{ defaultService.name }}
-      </nuxt-link>
+      </router-link>
       <span v-else>
         {{ defaultService.name }}
       </span>

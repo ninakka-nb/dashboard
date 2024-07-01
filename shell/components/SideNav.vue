@@ -13,7 +13,7 @@ import {
 import { sortBy } from '@shell/utils/sort';
 import { ucFirst } from '@shell/utils/string';
 
-import { HCI, CATALOG, UI, SCHEMA } from '@shell/config/types';
+import { HCI, UI, SCHEMA } from '@shell/config/types';
 import { HARVESTER_NAME as HARVESTER } from '@shell/config/features';
 import { NAME as EXPLORER } from '@shell/config/product/explorer';
 import { TYPE_MODES } from '@shell/store/type-map';
@@ -74,13 +74,6 @@ export default {
       }
     },
 
-    productId(a, b) {
-      if ( a !== b) {
-        // Immediately update because you'll see it come in later
-        this.getGroups();
-      }
-    },
-
     // Queue namespaceMode and namespaces
     // Changes to namespaceMode can also change namespaces, so keep this simple and execute both in a shortened queue
 
@@ -103,6 +96,13 @@ export default {
       }
     },
 
+    rootProduct(a, b) {
+      if (a?.name !== b?.name) {
+        // Immediately update because you'll see it come in later
+        this.getGroups();
+      }
+    },
+
     $route(a, b) {
       this.$nextTick(() => this.syncNav());
     },
@@ -111,20 +111,14 @@ export default {
 
   computed: {
     ...mapState(['managementReady', 'clusterReady']),
-    ...mapGetters(['productId', 'clusterId', 'currentProduct', 'isSingleProduct', 'namespaceMode', 'isExplorer', 'isVirtualCluster']),
+    ...mapGetters(['productId', 'clusterId', 'currentProduct', 'rootProduct', 'isSingleProduct', 'namespaceMode', 'isExplorer', 'isVirtualCluster']),
     ...mapGetters({ locale: 'i18n/selectedLocaleLabel', availableLocales: 'i18n/availableLocales' }),
     ...mapGetters('type-map', ['activeProducts']),
 
     favoriteTypes: mapPref(FAVORITE_TYPES),
 
-    showClusterTools() {
-      return this.isExplorer &&
-             this.$store.getters['cluster/canList'](CATALOG.CLUSTER_REPO) &&
-             this.$store.getters['cluster/canList'](CATALOG.APP);
-    },
-
     supportLink() {
-      const product = this.currentProduct;
+      const product = this.rootProduct;
 
       if (product?.supportRoute) {
         return { ...product.supportRoute, params: { ...product.supportRoute.params, cluster: this.clusterId } };
@@ -159,7 +153,7 @@ export default {
     },
 
     isVirtualProduct() {
-      return this.currentProduct.name === HARVESTER;
+      return this.rootProduct.name === HARVESTER;
     },
 
     allNavLinks() {
@@ -420,33 +414,18 @@ export default {
         />
       </template>
     </div>
-    <!-- Cluster tools -->
-    <n-link
-      v-if="showClusterTools"
-      tag="div"
-      class="tools"
-      :to="{name: 'c-cluster-explorer-tools', params: {cluster: clusterId}}"
-    >
-      <a
-        class="tools-button"
-        @click="collapseAll()"
-      >
-        <i class="icon icon-gear" />
-        <span>{{ t('nav.clusterTools') }}</span>
-      </a>
-    </n-link>
     <!-- SideNav footer area (seems to be tied to harvester) -->
     <div
       v-if="showProductFooter"
       class="footer"
     >
       <!-- support link -->
-      <nuxt-link
+      <router-link
         :to="supportLink"
         class="pull-right"
       >
         {{ t('nav.support', {hasSupport: true}) }}
-      </nuxt-link>
+      </router-link>
       <!-- version number -->
       <span
         v-clean-tooltip="{content: displayVersion, placement: 'top'}"
@@ -492,14 +471,13 @@ export default {
       v-else
       class="version text-muted flex"
     >
-      <nuxt-link
+      <router-link
         v-if="singleProductAbout"
         :to="singleProductAbout"
       >
         {{ displayVersion }}
-      </nuxt-link>
+      </router-link>
       <template v-else>
-        <span>{{ displayVersion }}</span>
         <span
           v-if="isVirtualCluster && isExplorer"
           v-tooltip="{content: harvesterVersion, placement: 'top'}"

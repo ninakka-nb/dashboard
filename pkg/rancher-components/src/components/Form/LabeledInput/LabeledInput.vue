@@ -355,14 +355,20 @@ export default defineComponent({
       :hover="hoverTooltip"
       :value="validationMessage"
     />
-    <label
-      v-if="cronHint"
-      class="cron-label"
-    >{{ cronHint }}</label>
-    <label
-      v-if="subLabel"
+    <div
+      v-if="cronHint || subLabel"
       class="sub-label"
-    >{{ subLabel }}</label>
+    >
+      <div
+        v-if="cronHint"
+      >
+        {{ cronHint }}
+      </div>
+      <div
+        v-if="subLabel"
+        v-clean-html="subLabel"
+      />
+    </div>
   </div>
 </template>
 <style scoped lang="scss">

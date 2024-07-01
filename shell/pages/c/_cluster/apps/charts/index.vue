@@ -7,7 +7,7 @@ import ButtonGroup from '@shell/components/ButtonGroup';
 import SelectIconGrid from '@shell/components/SelectIconGrid';
 import TypeDescription from '@shell/components/TypeDescription';
 import {
-  REPO_TYPE, REPO, CHART, VERSION, SEARCH_QUERY, _FLAGGED, CATEGORY, DEPRECATED, HIDDEN, OPERATING_SYSTEM
+  REPO_TYPE, REPO, CHART, VERSION, SEARCH_QUERY, _FLAGGED, CATEGORY, DEPRECATED as DEPRECATED_QUERY, HIDDEN, OPERATING_SYSTEM
 } from '@shell/config/query-params';
 import { lcFirst } from '@shell/utils/string';
 import { sortBy } from '@shell/utils/sort';
@@ -37,12 +37,12 @@ export default {
   },
 
   async fetch() {
-    await this.$store.dispatch('catalog/load', { force: true, reset: true });
+    await this.$store.dispatch('catalog/load');
 
     const query = this.$route.query;
 
     this.searchQuery = query[SEARCH_QUERY] || '';
-    this.showDeprecated = query[DEPRECATED] === _FLAGGED;
+    this.showDeprecated = query[DEPRECATED_QUERY] === 'true' || query[DEPRECATED_QUERY] === _FLAGGED;
     this.showHidden = query[HIDDEN] === _FLAGGED;
     this.category = query[CATEGORY] || '';
     this.allRepos = this.areAllEnabled();
@@ -181,6 +181,7 @@ export default {
      */
     featuredCharts() {
       const filteredCharts = this.filterCharts({});
+
       const featuredCharts = filteredCharts.filter((value) => value.featured).sort((a, b) => a.featured - b.featured);
 
       return featuredCharts.slice(0, 5);
@@ -240,6 +241,10 @@ export default {
     operatingSystem(os) {
       this.$router.applyQuery({ [OPERATING_SYSTEM]: os || undefined });
     },
+
+    showDeprecated(neu) {
+      this.$router.applyQuery({ [DEPRECATED_QUERY]: neu || undefined });
+    }
   },
 
   mounted() {
@@ -311,18 +316,24 @@ export default {
         version = versions[0].version;
       }
 
+      const query = {
+        [REPO_TYPE]: chart.repoType,
+        [REPO]:      chart.repoName,
+        [CHART]:     chart.chartName,
+        [VERSION]:   version
+      };
+
+      if (chart.deprecated && this.showDeprecated) {
+        query[DEPRECATED_QUERY] = 'true';
+      }
+
       this.$router.push({
         name:   'c-cluster-apps-charts-chart',
         params: {
           cluster: this.$route.params.cluster,
           product: this.$store.getters['productId'],
         },
-        query: {
-          [REPO_TYPE]: chart.repoType,
-          [REPO]:      chart.repoName,
-          [CHART]:     chart.chartName,
-          [VERSION]:   version,
-        }
+        query
       });
     },
 
@@ -388,6 +399,7 @@ export default {
       <h3>{{ t('catalog.charts.featuredCharts') }}</h3>
       <Carousel
         :sliders="featuredCharts"
+        data-testid="charts-carousel"
         @clicked="(row) => selectChart(row)"
       />
     </div>
@@ -400,6 +412,7 @@ export default {
         :value="flattenedRepoNames"
         class="checkbox-select"
         :close-on-select="false"
+        data-testid="charts-filter-repos"
         @option:selecting="$event.all ? toggleAll(!$event.enabled) : toggleRepo($event, !$event.enabled) "
       >
         <template #selected-option="selected">
@@ -433,6 +446,7 @@ export default {
         label="label"
         style="min-width: 200px;"
         :reduce="opt => opt.value"
+        data-testid="charts-filter-category"
       >
         <template #option="opt">
           {{ opt.label }} ({{ opt.count }})
@@ -446,6 +460,7 @@ export default {
           type="search"
           class="input-sm"
           :placeholder="t('catalog.charts.search')"
+          data-testid="charts-filter-input"
         >
 
         <button
@@ -458,6 +473,14 @@ export default {
           mode="refresh"
           size="sm"
           @click="refresh"
+        />
+      </div>
+
+      <div class="mt-10">
+        <Checkbox
+          v-model="showDeprecated"
+          :label="t('catalog.charts.deprecatedChartsFilter.label')"
+          data-testid="charts-show-deprecated-filter"
         />
       </div>
     </div>
@@ -480,6 +503,8 @@ export default {
       </div>
       <SelectIconGrid
         v-else
+        data-testid="chart-selection-grid"
+        component-test-id="chart-selection"
         :rows="filteredCharts"
         name-field="chartNameDisplay"
         description-field="chartDescription"

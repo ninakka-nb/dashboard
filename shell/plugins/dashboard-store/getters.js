@@ -8,14 +8,17 @@ import mutations from './mutations';
 import { keyFieldFor, normalizeType } from './normalize';
 import { lookup } from './model-loader';
 import garbageCollect from '@shell/utils/gc/gc';
+import paginationUtils from '@shell/utils/pagination-utils';
 
 export const urlFor = (state, getters) => (type, id, opt) => {
   opt = opt || {};
   type = getters.normalizeType(type);
   let url = opt.url;
 
+  let schema;
+
   if ( !url ) {
-    const schema = getters.schemaFor(type);
+    schema = getters.schemaFor(type);
 
     if ( !schema ) {
       throw new Error(`Unknown schema for type: ${ type }`);
@@ -38,7 +41,7 @@ export const urlFor = (state, getters) => (type, id, opt) => {
     url = `${ baseUrl }/${ url }`;
   }
 
-  url = getters.urlOptions(url, opt);
+  url = getters.urlOptions(url, opt, schema);
 
   return url;
 };
@@ -68,6 +71,9 @@ function matchingCounts(typeObj, namespaces) {
 
 export default {
 
+  /**
+   * Get all entries in the store. This might not mean all entries of this type
+   */
   all: (state, getters, rootState) => (type) => {
     type = getters.normalizeType(type);
 
@@ -294,10 +300,37 @@ export default {
     return false;
   },
 
+  havePaginatedPage: (state, getters) => (type, opt) => {
+    if (!opt.pagination) {
+      return false;
+    }
+
+    type = getters.normalizeType(type);
+    const entry = state.types[type];
+
+    if ( entry?.havePage ) {
+      const { namespace: aNamespace = undefined, pagination: aPagination } = entry.havePage.request;
+      const { namespace: bNamespace = undefined, pagination: bPagination } = {
+        namespace:  opt.namespaced,
+        pagination: opt.pagination
+      };
+
+      return entry.havePage && aNamespace === bNamespace && paginationUtils.paginationEqual(aPagination, bPagination);
+    }
+
+    return false;
+  },
+
   haveNamespace: (state, getters) => (type) => {
     type = getters.normalizeType(type);
 
     return state.types[type]?.haveNamespace || null;
+  },
+
+  havePage: (state, getters) => (type) => {
+    type = getters.normalizeType(type);
+
+    return state.types[type]?.havePage || null;
   },
 
   haveSelector: (state, getters) => (type, selector) => {
@@ -321,7 +354,7 @@ export default {
 
   urlFor,
 
-  urlOptions: () => (url, opt) => {
+  urlOptions: () => (url, opt, schema) => {
     return url;
   },
 
@@ -367,6 +400,10 @@ export default {
    *
    * This takes into account if the type is namespaced.
    *
+   * Used in currently two places
+   * - Type
+   * - getTree
+   *
    * @param typeObj see inners for properties. must have at least `name` (resource type)
    *
    */
@@ -383,6 +420,7 @@ export default {
       const counts = getters.all(COUNT)?.[0]?.counts || {};
       const count = counts[type];
 
+      // This object aligns with `Type.vue` `type`
       _typeObj = {
         count:       count ? count.summary.count || 0 : null,
         byNamespace: count ? count.namespaces : {},
@@ -391,9 +429,26 @@ export default {
       };
     }
 
-    const namespaces = Object.keys(rootGetters.activeNamespaceCache || {});
+    const namespaces = _typeObj?.namespaced ? Object.keys(rootGetters.activeNamespaceCache || {}) : [];
 
     return matchingCounts(_typeObj, namespaces.length ? namespaces : null);
   },
 
+  generation: (state, getters) => (type) => {
+    type = getters.normalizeType(type);
+    const entry = state.types[type];
+
+    if ( entry ) {
+      return entry.generation;
+    }
+
+    return undefined;
+  },
+
+  paginationEnabled: (state, getters, rootState, rootGetters) => (type = null) => {
+    const store = state.config.namespace;
+    const resource = type ? { id: type } : null;
+
+    return paginationUtils.isEnabled({ rootGetters }, { store, resource });
+  }
 };

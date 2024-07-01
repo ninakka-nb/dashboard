@@ -12,7 +12,8 @@ export const BASE_SCOPES = {
   github:       ['read:org'],
   googleoauth:  ['openid profile email'],
   azuread:      [],
-  keycloakoidc: ['openid profile email']
+  keycloakoidc: ['openid profile email'],
+  oidc:         ['openid profile email'],
 };
 
 const KEY = 'rc_nonce';
@@ -37,7 +38,7 @@ export const state = function() {
 };
 
 export const getters = {
-  fromHeader() {
+  fromHeader(state) {
     return state.fromHeader;
   },
 
@@ -344,9 +345,27 @@ export const actions = {
     }
   },
 
-  async logout({ dispatch, commit }) {
+  async logout({
+    dispatch, commit, getters, rootState
+  }, options = {}) {
+    // So, we only do this check if auth has been initialized.
+    //
+    // It's possible to be logged in and visit auth/logout directly instead
+    // of navigating from the app while being logged in. Unfortunately auth/logout
+    // doesn't use the authenticated middleware which means auth will never be
+    // initialized and this check will be invalid. This interferes with how we sometimes
+    // logout in our e2e tests.
+    //
+    // I'm going to leave this as is because we will be modifying and removing authenticated
+    // middleware soon and we should remove `force` at that time.
+    //
+    // TODO: remove `force` once authenticated middleware is removed/made sane.
+    if (!options?.force && !getters['loggedIn']) {
+      return;
+    }
+
     // Unload plugins - we will load again on login
-    await this.$plugin.logout();
+    await rootState.$plugin.logout();
 
     try {
       await dispatch('rancher/request', {

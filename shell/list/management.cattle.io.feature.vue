@@ -163,15 +163,17 @@ export default {
           const response = await this.$axios.get(url, { timeout: 5000 });
 
           if (response?.status === 200) {
-            this.rows = await this.$store.dispatch('management/findAll', { type: this.resource, opt: { force: true } });
+            await this.$store.dispatch('management/findAll', { type: this.resource, opt: { force: true } });
             btnCB(true);
             this.close();
             this.waiting = false;
           }
         } catch (e) {}
 
-        this.waitForBackend(btnCB, id);
-      }, 2500);
+        if (this.waiting) {
+          this.waitForBackend(btnCB, id);
+        }
+      }, 5000);
     },
 
     async saveUrl(btnCB) {

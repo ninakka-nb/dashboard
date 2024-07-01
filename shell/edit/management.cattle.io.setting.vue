@@ -43,6 +43,7 @@ export default {
   created() {
     this.value.value = this.value.value || this.value.default;
     this.enumOptions = this.setting?.kind === 'enum' ? this.setting.options.map((id) => ({
+      // i18n-uses advancedSettings.enum.*
       label: `advancedSettings.enum.${ this.value.id }.${ id }`,
       value: id,
     })) : [];
@@ -51,6 +52,12 @@ export default {
       path:  'value',
       rules: this.setting.ruleSet.map(({ name }) => name)
     }] : [];
+
+    // Don't allow the user to reset the server URL if there is no default
+    // helps to ensure that a value is always set
+    if (isServerUrl(this.value.id) && !this.value.default) {
+      this.canReset = false;
+    }
   },
 
   computed: {
@@ -70,6 +77,10 @@ export default {
 
     showLocalhostWarning() {
       return isServerUrl(this.value.id) && isLocalhost(this.value.value);
+    },
+
+    showWarningBanner() {
+      return this.setting?.warning;
     },
 
     validationPassed() {
@@ -134,6 +145,13 @@ export default {
     @finish="saveSettings"
     @cancel="done"
   >
+    <Banner
+      v-if="showWarningBanner"
+      color="warning"
+      :label="t(`advancedSettings.warnings.${ setting.warning }`)"
+      data-testid="advanced_settings_warning_banner"
+    />
+
     <h4>{{ description }}</h4>
 
     <h5
@@ -159,6 +177,7 @@ export default {
       v-if="showLocalhostWarning"
       color="warning"
       :label="t('validation.setting.serverUrl.localhost')"
+      data-testid="setting-serverurl-localhost-warning"
     />
 
     <Banner
@@ -166,6 +185,7 @@ export default {
       :key="i"
       color="error"
       :label="err"
+      data-testid="setting-error-banner"
     />
 
     <div class="mt-20">

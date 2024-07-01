@@ -5,7 +5,7 @@
  */
 
 import { get } from '@shell/utils/object';
-import { LoadBalancerSku, OutboundType } from 'types';
+import { LoadBalancerSku, OutboundType } from '@pkg/aks/types';
 
 // no need to try to validate any fields if the user is still selecting a credential and the rest of the form isn't visible
 export const needsValidation = (ctx: any): Boolean => {
@@ -28,7 +28,7 @@ export const requiredInCluster = (ctx: any, labelKey: string, clusterPath: strin
 export const clusterNameChars = (ctx: any ) => {
   return () :string | undefined => {
     const { name = '' } = get(ctx, 'normanCluster');
-    const nameIsValid = name.match(/^([A-Z]|[a-z]|[0-9]|-|_)+$/);
+    const nameIsValid = name.match(/^[a-zA-Z0-9\-_]*$/);
 
     return !needsValidation(ctx) || nameIsValid ? undefined : ctx.t('aks.errors.clusterName.chars');
   };
@@ -52,8 +52,6 @@ export const clusterNameLength = (ctx: any) => {
   };
 };
 
-// letters, numbers, -, _, (, ), ., and unicode UppercaseLetter, LowercaseLetter, TitlecaseLetter, ModifierLetter, OtherLetter
-// https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/resource-name-rules#microsoftresources
 export const resourceGroupLength = (ctx: any, labelKey:string, clusterPath:string) => {
   return () :string | undefined => {
     const resourceGroup = get(ctx.normanCluster, clusterPath) || '';
@@ -64,13 +62,14 @@ export const resourceGroupLength = (ctx: any, labelKey:string, clusterPath:strin
   };
 };
 
+// letters, numbers, -, _, (, ), ., and unicode UppercaseLetter, LowercaseLetter, TitlecaseLetter, ModifierLetter, OtherLetter
+// https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/resource-name-rules#microsoftresources
 export const resourceGroupChars = (ctx: any, labelKey:string, clusterPath:string) => {
   return () :string | undefined => {
     const resourceGroup = get(ctx.normanCluster, clusterPath) || '';
+    const isValid = resourceGroup.match(/^[A-Za-z0-9\p{Lu}\p{Ll}\p{Lt}\p{Lo}\p{Lm}\p{Nd}\.\-_(\)]*$/);
 
-    const isValid = resourceGroup.match(/^([A-Z]|[a-z]|\p{Lu}|\p{Ll}|\p{Lt}|\p{Lo}|\p{Lm}|\p{Nd}|\.|-|_|\(|\))*$/u);
-
-    return isValid ? undefined : ctx.t('aks.errors.resourceGroup.chars', { key: ctx.t(labelKey) });
+    return isValid || !resourceGroup.length ? undefined : ctx.t('aks.errors.resourceGroup.chars', { key: ctx.t(labelKey) });
   };
 };
 
@@ -132,9 +131,9 @@ export const outboundTypeUserDefined = (ctx: any, labelKey: string, clusterPath:
 // https://learn.microsoft.com/en-us/azure/aks/private-clusters?tabs=azure-portal#configure-a-private-dns-zone
 export const privateDnsZone = (ctx: any, labelKey: string, clusterPath: string) => {
   return () :string | undefined => {
-    const toValidate = get(ctx.normanCluster, clusterPath) || '';
-
-    const isValid = toValidate.match(/^([a-zA-Z0-9-]{1,32}\.){0,32}private(link){0,1}\.[a-zA-Z0-9]+\.azmk8s\.io$/);
+    const toValidate = (get(ctx.normanCluster, clusterPath) || '').toLowerCase();
+    const subscriptionRegex = /^\/subscriptions\/.+\/resourcegroups\/.+\/providers\/microsoft\.network\/privatednszones\/([a-zA-Z0-9-]{1,32}\.){0,32}private(link){0,1}\.[a-zA-Z0-9]+\.azmk8s\.io$/;
+    const isValid = toValidate.match(subscriptionRegex);
 
     return isValid || !toValidate.length ? undefined : ctx.t('aks.errors.privateDnsZone', {}, true);
   };

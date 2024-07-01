@@ -16,7 +16,7 @@ import { filterOnlyKubernetesClusters, filterHiddenLocalCluster } from '@shell/u
 import { getProductFromRoute } from '@shell/utils/router';
 import { isRancherPrime } from '@shell/config/version';
 import Pinned from '@shell/components/nav/Pinned';
-import isObject from 'lodash/isObject';
+import { getGlobalBannerFontSizes } from '@shell/utils/banners';
 
 export default {
   components: {
@@ -60,35 +60,14 @@ export default {
       },
     },
     sideMenuStyle() {
+      const globalBannerSettings = getGlobalBannerFontSizes(this.$store);
+
       return {
-        marginBottom: this.globalBannerSettings?.footerFont,
-        marginTop:    this.globalBannerSettings?.headerFont
+        marginBottom: globalBannerSettings?.footerFont,
+        marginTop:    globalBannerSettings?.headerFont
       };
     },
 
-    globalBannerSettings() {
-      const settings = this.$store.getters['management/all'](MANAGEMENT.SETTING);
-      const bannerSettings = settings?.find((s) => s.id === SETTING.BANNERS);
-
-      if (bannerSettings) {
-        const parsed = JSON.parse(bannerSettings.value);
-        const {
-          showFooter, showHeader, bannerFooter, bannerHeader, banner
-        } = parsed;
-
-        // add defaults to accomodate older JSON structures for banner definitions without breaking the UI
-        // https://github.com/rancher/dashboard/issues/10140
-        const bannerHeaderFontSize = bannerHeader?.fontSize || banner?.fontSize || '14px';
-        const bannerFooterFontSize = bannerFooter?.fontSize || banner?.fontSize || '14px';
-
-        return {
-          headerFont: showHeader === 'true' ? this.pxToEm(bannerHeaderFontSize) : '0px',
-          footerFont: showFooter === 'true' ? this.pxToEm(bannerFooterFontSize) : '0px'
-        };
-      }
-
-      return undefined;
-    },
     legacyEnabled() {
       return this.features(LEGACY);
     },
@@ -129,7 +108,7 @@ export default {
           isLocal:         x.isLocal,
           isHarvester:     x.isHarvester,
           pinned:          x.pinned,
-          description:     pCluster?.description,
+          description:     pCluster?.description || x.description,
           pin:             () => x.pin(),
           unpin:           () => x.unpin(),
           clusterRoute:    { name: 'c-cluster-explorer', params: { cluster: x.id } }
@@ -141,6 +120,16 @@ export default {
       const search = (this.clusterFilter || '').toLowerCase();
       const out = search ? this.clusters.filter((item) => item.label?.toLowerCase().includes(search)) : this.clusters;
       const sorted = sortBy(out, ['ready:desc', 'label']);
+
+      // put local cluster on top of list always
+      // https://github.com/rancher/dashboard/issues/10975
+      if (sorted.findIndex((c) => c.id === 'local') > 0) {
+        const localCluster = sorted.find((c) => c.id === 'local');
+        const localIndex = sorted.findIndex((c) => c.id === 'local');
+
+        sorted.splice(localIndex, 1);
+        sorted.unshift(localCluster);
+      }
 
       if (search) {
         this.showPinClusters = false;
@@ -163,6 +152,16 @@ export default {
     pinFiltered() {
       const out = this.clusters.filter((item) => item.pinned);
       const sorted = sortBy(out, ['ready:desc', 'label']);
+
+      // put local cluster on top of list always
+      // https://github.com/rancher/dashboard/issues/10975
+      if (sorted.findIndex((c) => c.id === 'local') > 0) {
+        const localCluster = sorted.find((c) => c.id === 'local');
+        const localIndex = sorted.findIndex((c) => c.id === 'local');
+
+        sorted.splice(localIndex, 1);
+        sorted.unshift(localCluster);
+      }
 
       return sorted;
     },
@@ -221,7 +220,9 @@ export default {
           params: { cluster }
         };
 
-        if ( !this.$router.getMatchedComponents(to).length ) {
+        const matched = this.$router.getRoutes().filter((route) => route.name === to.name);
+
+        if ( !matched.length ) {
           to.name = 'c-cluster-product';
           to.params.product = p.name;
         }
@@ -258,6 +259,53 @@ export default {
     productFromRoute() {
       return getProductFromRoute(this.$route);
     },
+
+    aboutText() {
+      // If a version number (starts with 'v') then use that
+      if (this.displayVersion.startsWith('v')) {
+        // Don't show the '.0' for a minor release (e.g. 2.8.0, 2.9.0 etc)
+        return !this.displayVersion.endsWith('.0') ? this.displayVersion : this.displayVersion.substr(0, this.displayVersion.length - 2);
+      }
+
+      // Default fallback to 'About'
+      return this.t('about.title');
+    },
+
+    largeAboutText() {
+      return this.aboutText.length > 6;
+    },
+
+    appBar() {
+      let activeFound = false;
+
+      // order is important for the object keys here
+      // since we want to check last pinFiltered and clustersFiltered
+      const appBar = {
+        hciApps:           this.hciApps,
+        multiClusterApps:  this.multiClusterApps,
+        legacyApps:        this.legacyApps,
+        configurationApps: this.configurationApps,
+        pinFiltered:       this.pinFiltered,
+        clustersFiltered:  this.clustersFiltered,
+      };
+
+      Object.keys(appBar).forEach((menuSection) => {
+        const menuSectionItems = appBar[menuSection];
+        const isClusterCheck = menuSection === 'pinFiltered' || menuSection === 'clustersFiltered';
+
+        // need to reset active state on other menu items
+        menuSectionItems.forEach((item) => {
+          item.isMenuActive = false;
+
+          if (!activeFound && this.checkActiveRoute(item, isClusterCheck)) {
+            activeFound = true;
+            item.isMenuActive = true;
+          }
+        });
+      });
+
+      return appBar;
+    }
   },
 
   watch: {
@@ -275,19 +323,6 @@ export default {
   },
 
   methods: {
-    /**
-     * Converts a pixel value to an em value based on the default font size.
-     * @param {number} elementFontSize - The font size of the element in pixels.
-     * @param {number} [defaultFontSize=14] - The default font size in pixels.
-     * @returns {string} The converted value in em units.
-     */
-    pxToEm(elementFontSize, defaultFontSize = 14) {
-      const lineHeightInPx = 2 * parseInt(elementFontSize);
-      const lineHeightInEm = lineHeightInPx / defaultFontSize;
-
-      return `${ lineHeightInEm }em`;
-    },
-
     checkActiveRoute(obj, isClusterRoute) {
       // for Cluster links in main nav: check if route is a cluster explorer one + check if route cluster matches cluster obj id + check if curr product matches route product
       if (isClusterRoute) {
@@ -363,8 +398,12 @@ export default {
         content = this.shown ? null : contentText;
 
       // if key combo is pressed, then we update the tooltip as well
-      } else if (this.routeCombo && isObject(item) && item.ready) {
-        contentText = 'Switch clusters and keeps location';
+      } else if (this.routeCombo &&
+        typeof item === 'object' &&
+        !Array.isArray(item) &&
+        item !== null &&
+        item.ready) {
+        contentText = this.t('nav.keyComboTooltip');
 
         if (showWhenClosed) {
           content = !this.shown ? contentText : null;
@@ -450,7 +489,7 @@ export default {
           <div>
             <!-- Home button -->
             <div @click="hide()">
-              <nuxt-link
+              <router-link
                 class="option cluster selector home"
                 :to="{ name: 'home' }"
               >
@@ -467,7 +506,7 @@ export default {
                 <div class="home-text">
                   {{ t('nav.home') }}
                 </div>
-              </nuxt-link>
+              </router-link>
             </div>
             <!-- Search bar -->
             <div
@@ -522,21 +561,21 @@ export default {
               </a>
             </div>
             <div
-              v-for="a in hciApps"
+              v-for="a in appBar.hciApps"
               :key="a.label"
               @click="hide()"
             >
-              <nuxt-link
+              <router-link
                 class="option"
                 :to="a.to"
-                :class="{'active-menu-link': checkActiveRoute(a) }"
+                :class="{'active-menu-link': a.isMenuActive }"
               >
                 <IconOrSvg
                   :icon="a.icon"
                   :src="a.svg"
                 />
                 <div>{{ a.label }}</div>
-              </nuxt-link>
+              </router-link>
             </div>
           </template>
 
@@ -553,16 +592,17 @@ export default {
                 class="clustersPinned"
               >
                 <div
-                  v-for="c in pinFiltered"
+                  v-for="(c, index) in appBar.pinFiltered"
                   :key="c.id"
+                  :data-testid="`pinned-ready-cluster-${index}`"
                   @click="hide()"
                 >
                   <button
                     v-if="c.ready"
-                    v-shortkey.push="{windows: ['alt', 'shift'], mac: ['option', 'shift']}"
+                    v-shortkey.push="{windows: ['alt'], mac: ['option']}"
                     :data-testid="`pinned-menu-cluster-${ c.id }`"
                     class="cluster selector option"
-                    :class="{'active-menu-link': checkActiveRoute(c, true) }"
+                    :class="{'active-menu-link': c.isMenuActive }"
                     :to="c.clusterRoute"
                     @click.prevent="clusterMenuClick($event, c)"
                     @shortkey="handleKeyComboClick"
@@ -627,17 +667,17 @@ export default {
               <!-- Clusters Search result -->
               <div class="clustersList">
                 <div
-                  v-for="(c, index) in clustersFiltered"
+                  v-for="(c, index) in appBar.clustersFiltered"
                   :key="c.id"
                   :data-testid="`top-level-menu-cluster-${index}`"
                   @click="hide()"
                 >
                   <button
                     v-if="c.ready"
-                    v-shortkey.push="{windows: ['alt', 'shift'], mac: ['option', 'shift']}"
+                    v-shortkey.push="{windows: ['alt'], mac: ['option']}"
                     :data-testid="`menu-cluster-${ c.id }`"
                     class="cluster selector option"
-                    :class="{'active-menu-link': checkActiveRoute(c, true) }"
+                    :class="{'active-menu-link': c.isMenuActive }"
                     :to="c.clusterRoute"
                     @click="clusterMenuClick($event, c)"
                     @shortkey="handleKeyComboClick"
@@ -706,7 +746,7 @@ export default {
             </div>
 
             <!-- See all clusters -->
-            <nuxt-link
+            <router-link
               v-if="clusters.length > maxClustersToShow"
               class="clusters-all"
               :to="{name: 'c-cluster-product-resource', params: {
@@ -719,7 +759,7 @@ export default {
                 {{ shown ? t('nav.seeAllClusters') : t('nav.seeAllClustersCollapsed') }}
                 <i class="icon icon-chevron-right" />
               </span>
-            </nuxt-link>
+            </router-link>
           </template>
 
           <div class="category">
@@ -733,13 +773,13 @@ export default {
                 </span>
               </div>
               <div
-                v-for="a in multiClusterApps"
+                v-for="a in appBar.multiClusterApps"
                 :key="a.label"
                 @click="hide()"
               >
-                <nuxt-link
+                <router-link
                   class="option"
-                  :class="{'active-menu-link': checkActiveRoute(a) }"
+                  :class="{'active-menu-link': a.isMenuActive }"
                   :to="a.to"
                 >
                   <IconOrSvg
@@ -748,7 +788,7 @@ export default {
                     :src="a.svg"
                   />
                   <span class="option-link">{{ a.label }}</span>
-                </nuxt-link>
+                </router-link>
               </div>
             </template>
             <template v-if="legacyEnabled">
@@ -761,13 +801,13 @@ export default {
                 </span>
               </div>
               <div
-                v-for="a in legacyApps"
+                v-for="a in appBar.legacyApps"
                 :key="a.label"
                 @click="hide()"
               >
-                <nuxt-link
+                <router-link
                   class="option"
-                  :class="{'active-menu-link': checkActiveRoute(a) }"
+                  :class="{'active-menu-link': a.isMenuActive }"
                   :to="a.to"
                 >
                   <IconOrSvg
@@ -776,7 +816,7 @@ export default {
                     :src="a.svg"
                   />
                   <div>{{ a.label }}</div>
-                </nuxt-link>
+                </router-link>
               </div>
             </template>
 
@@ -791,13 +831,13 @@ export default {
                 </span>
               </div>
               <div
-                v-for="a in configurationApps"
+                v-for="a in appBar.configurationApps"
                 :key="a.label"
                 @click="hide()"
               >
-                <nuxt-link
+                <router-link
                   class="option"
-                  :class="{'active-menu-link': checkActiveRoute(a) }"
+                  :class="{'active-menu-link': a.isMenuActive }"
                   :to="a.to"
                 >
                   <IconOrSvg
@@ -806,7 +846,7 @@ export default {
                     :src="a.svg"
                   />
                   <div>{{ a.label }}</div>
-                </nuxt-link>
+                </router-link>
               </div>
             </template>
           </div>
@@ -821,21 +861,22 @@ export default {
             class="support"
             @click="hide()"
           >
-            <nuxt-link
+            <router-link
               :to="{name: 'support'}"
             >
               {{ t('nav.support', {hasSupport}) }}
-            </nuxt-link>
+            </router-link>
           </div>
           <div
             class="version"
+            :class="{'version-small': largeAboutText}"
             @click="hide()"
           >
-            <nuxt-link
+            <router-link
               :to="{ name: 'about' }"
             >
-              {{ t('about.title') }}
-            </nuxt-link>
+              {{ aboutText }}
+            </router-link>
           </div>
         </div>
       </div>
@@ -925,7 +966,7 @@ export default {
     flex-direction: column;
     padding: 0;
     overflow: hidden;
-    transition: width 500ms;
+    transition: width 250ms;
 
     &:focus {
       outline: 0;
@@ -999,17 +1040,21 @@ export default {
           }
         }
 
-        .cluster-name p {
-          width: 195px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          text-align: left;
+        .cluster-name {
+          line-height: normal;
 
-          &.description {
-            font-size: 12px;
-            padding-right: 8px;
-            color: var(--darker);
+          & > p {
+            width: 195px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: left;
+
+            &.description {
+              font-size: 12px;
+              padding-right: 8px;
+              color: var(--darker);
+            }
           }
         }
 
@@ -1317,14 +1362,19 @@ export default {
       }
 
       .footer {
-        margin: 20px 15px;
+        margin: 20px 10px;
+        width: 50px;
 
         .support {
           display: none;
         }
 
         .version{
-          text-align: left;
+          text-align: center;
+
+          &.version-small {
+            font-size: 12px;
+          }
         }
       }
     }

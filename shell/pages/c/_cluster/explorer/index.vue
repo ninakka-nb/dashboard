@@ -17,6 +17,7 @@ import {
   CATALOG,
   SECRET
 } from '@shell/config/types';
+import { NODE_ARCHITECTURE } from '@shell/config/labels-annotations';
 import { setPromiseResult } from '@shell/utils/promise';
 import AlertTable from '@shell/components/AlertTable';
 import { Banner } from '@components/Banner';
@@ -27,13 +28,12 @@ import {
   STATE,
 } from '@shell/config/table-headers';
 
-import { haveV1Monitoring, monitoringStatus, canViewGrafanaLink } from '@shell/utils/monitoring';
+import { monitoringStatus, canViewGrafanaLink } from '@shell/utils/monitoring';
 import Tabbed from '@shell/components/Tabbed';
 import Tab from '@shell/components/Tabbed/Tab';
 import { allDashboardsExist } from '@shell/utils/grafana';
 import EtcdInfoBanner from '@shell/components/EtcdInfoBanner';
 import metricPoller from '@shell/mixins/metric-poller';
-import EmberPage from '@shell/components/EmberPage';
 import ResourceSummary, { resourceCounts } from '@shell/components/ResourceSummary';
 import HardwareResourceGauge from '@shell/components/HardwareResourceGauge';
 import { isEmpty } from '@shell/utils/object';
@@ -47,6 +47,7 @@ import Certificates from '@shell/components/Certificates';
 import { NAME as EXPLORER } from '@shell/config/product/explorer';
 import TabTitle from '@shell/components/TabTitle';
 import { STATES_ENUM } from '@shell/plugins/dashboard-store/resource-class';
+import capitalize from 'lodash/capitalize';
 
 export const RESOURCES = [NAMESPACE, INGRESS, PV, WORKLOAD_TYPES.DEPLOYMENT, WORKLOAD_TYPES.STATEFUL_SET, WORKLOAD_TYPES.JOB, WORKLOAD_TYPES.DAEMON_SET, SERVICE];
 
@@ -75,7 +76,6 @@ export default {
     Tabbed,
     AlertTable,
     Banner,
-    EmberPage,
     ConfigBadge,
     EventsTable,
     SimpleBox,
@@ -85,7 +85,7 @@ export default {
 
   mixins: [metricPoller],
 
-  async fetch() {
+  fetch() {
     fetchClusterResources(this.$store, NODE);
 
     if (this.currentCluster) {
@@ -116,7 +116,11 @@ export default {
         this.$store.dispatch('management/findAll', { type: MANAGEMENT.NODE });
       }
 
-      await this.loadAgents();
+      this.canViewAgents = this.$store.getters['cluster/canList'](WORKLOAD_TYPES.DEPLOYMENT) && this.$store.getters['cluster/canList'](WORKLOAD_TYPES.STATEFUL_SET);
+
+      if (this.canViewAgents) {
+        this.loadAgents();
+      }
     }
   },
 
@@ -131,8 +135,9 @@ export default {
     return {
       nodeHeaders,
       constraints:        [],
-      cattle:             null,
-      fleet:              null,
+      cattleDeployment:   'loading',
+      fleetDeployment:    'loading',
+      fleetStatefulSet:   'loading',
       canViewAgents:      false,
       disconnected:       false,
       events:             [],
@@ -179,12 +184,9 @@ export default {
       return this.$store.getters['management/all'](MANAGEMENT.CLUSTER);
     },
 
-    hasV1Monitoring() {
-      return haveV1Monitoring(this.$store.getters);
-    },
-
-    v1MonitoringURL() {
-      return `/k/${ this.currentCluster.id }/monitoring`;
+    showClusterTools() {
+      return this.$store.getters['cluster/canList'](CATALOG.CLUSTER_REPO) &&
+      this.$store.getters['cluster/canList'](CATALOG.APP);
     },
 
     displayProvider() {
@@ -201,6 +203,38 @@ export default {
       }
 
       return this.t(`cluster.provider.${ provider }`);
+    },
+
+    nodesArchitecture() {
+      const obj = {};
+
+      this.nodes?.forEach((node) => {
+        if (!node.metadata?.state?.transitioning) {
+          const architecture = node.labels?.[NODE_ARCHITECTURE];
+
+          const key = architecture ? capitalize(architecture) : this.t('cluster.architecture.label.unknown');
+
+          obj[key] = (obj[key] || 0) + 1;
+        }
+      });
+
+      return obj;
+    },
+
+    architecture() {
+      const keys = Object.keys(this.nodesArchitecture);
+
+      switch (keys.length) {
+      case 0:
+        return { label: this.t('generic.provisioning') };
+      case 1:
+        return { label: keys[0] };
+      default:
+        return {
+          label:   this.t('cluster.architecture.label.mixed'),
+          tooltip: keys.reduce((acc, k) => `${ acc }${ k }: ${ this.nodesArchitecture[k] }<br>`, '')
+        };
+      }
     },
 
     isHarvesterCluster() {
@@ -238,19 +272,67 @@ export default {
         if (!this.currentCluster.isLocal) {
           services.push({
             name:     'cattle',
-            status:   this.getAgentStatus(this.cattle, this.disconnected),
+            status:   this.cattleStatus,
             labelKey: 'clusterIndexPage.sections.componentStatus.cattle',
           });
         }
 
         services.push({
           name:     'fleet',
-          status:   this.getAgentStatus(this.fleet),
+          status:   this.fleetStatus,
           labelKey: 'clusterIndexPage.sections.componentStatus.fleet',
         });
       }
 
       return services;
+    },
+
+    cattleStatus() {
+      const resource = this.cattleDeployment;
+
+      if (resource === 'loading') {
+        return STATES_ENUM.IN_PROGRESS;
+      }
+
+      if (!resource || this.disconnected || resource.status.conditions?.find((c) => c.status !== 'True') || resource.metadata.state?.error) {
+        return STATES_ENUM.UNHEALTHY;
+      }
+
+      if (resource.spec.replicas !== resource.status.readyReplicas || resource.status.unavailableReplicas > 0) {
+        return STATES_ENUM.WARNING;
+      }
+
+      return STATES_ENUM.HEALTHY;
+    },
+
+    fleetStatus() {
+      const resources = this.currentCluster.isLocal ? [
+        /**
+         * 'fleetStatefulSet' could take a while to be created by rancher.
+         * During that startup period, only 'fleetDeployment' will be used to calculate the fleet agent status.
+         */
+        ...(this.fleetStatefulSet ? [this.fleetStatefulSet, this.fleetDeployment] : [this.fleetDeployment]),
+      ] : [
+        this.fleetStatefulSet
+      ];
+
+      if (resources.find((r) => r === 'loading')) {
+        return STATES_ENUM.IN_PROGRESS;
+      }
+
+      for (const resource of resources) {
+        if (!resource || resource.status.conditions?.find((c) => c.status !== 'True') || resource.metadata.state?.error) {
+          return STATES_ENUM.UNHEALTHY;
+        }
+      }
+
+      for (const resource of resources) {
+        if (resource.spec.replicas !== resource.status.readyReplicas || resource.status.unavailableReplicas > 0) {
+          return STATES_ENUM.WARNING;
+        }
+      }
+
+      return STATES_ENUM.HEALTHY;
     },
 
     totalCountGaugeInput() {
@@ -399,26 +481,26 @@ export default {
   },
 
   methods: {
-    async loadAgents() {
-      this.canViewAgents = !!this.$store.getters['cluster/schemaFor'](WORKLOAD_TYPES.DEPLOYMENT);
+    loadAgents() {
+      if (this.currentCluster.isLocal) {
+        this.setAgentResource('fleetDeployment', WORKLOAD_TYPES.DEPLOYMENT, 'cattle-fleet-system/fleet-controller');
+        this.setAgentResource('fleetStatefulSet', WORKLOAD_TYPES.STATEFUL_SET, 'cattle-fleet-local-system/fleet-agent');
+      } else {
+        this.setAgentResource('fleetStatefulSet', WORKLOAD_TYPES.STATEFUL_SET, 'cattle-fleet-system/fleet-agent');
+        this.setAgentResource('cattleDeployment', WORKLOAD_TYPES.DEPLOYMENT, 'cattle-system/cattle-cluster-agent');
 
-      if (this.canViewAgents) {
-        if (!this.currentCluster.isLocal) {
-          this.cattle = await this.$store.dispatch('cluster/find', {
-            type: WORKLOAD_TYPES.DEPLOYMENT,
-            id:   'cattle-system/cattle-cluster-agent'
-          });
+        // Scaling Up/Down cattle deployment causes web sockets disconnection;
+        this.interval = setInterval(() => {
+          this.disconnected = !!this.$store.getters['cluster/inError']({ type: NODE });
+        }, 1000);
+      }
+    },
 
-          // Scaling Up/Down cattle deployment causes web sockets disconnection;
-          this.interval = setInterval(() => {
-            this.disconnected = !!this.$store.getters['cluster/inError']({ type: NODE });
-          }, 1000);
-        }
-
-        this.fleet = await this.$store.dispatch('cluster/find', {
-          type: WORKLOAD_TYPES.DEPLOYMENT,
-          id:   `${ this.currentCluster.isLocal ? 'cattle-fleet-local-system' : 'cattle-fleet-system' }/fleet-agent`
-        });
+    async setAgentResource(agent, type, id) {
+      try {
+        this[agent] = await this.$store.dispatch('cluster/find', { type, id });
+      } catch (err) {
+        this[agent] = null;
       }
     },
 
@@ -438,22 +520,6 @@ export default {
 
       if (count > 0) {
         return STATES_ENUM.UNHEALTHY;
-      }
-
-      return STATES_ENUM.HEALTHY;
-    },
-
-    getAgentStatus(agent, disconnected = false) {
-      if (!agent) {
-        return STATES_ENUM.IN_PROGRESS;
-      }
-
-      if (disconnected || agent.status.conditions.find((c) => c.status !== 'True')) {
-        return STATES_ENUM.UNHEALTHY;
-      }
-
-      if (agent.spec.replicas !== agent.status.readyReplicas || agent.status.unavailableReplicas > 0) {
-        return STATES_ENUM.WARNING;
       }
 
       return STATES_ENUM.HEALTHY;
@@ -498,15 +564,18 @@ export default {
             {{ t('clusterIndexPage.header') }}
           </TabTitle>
         </h1>
-        <div>
-          <span v-if="hasDescription">{{ currentCluster.spec.description }}</span>
+        <div
+          v-if="hasDescription"
+          class="cluster-dashboard-description"
+        >
+          <span>{{ currentCluster.spec.description }}</span>
         </div>
       </div>
     </header>
     <div
       class="cluster-dashboard-glance"
     >
-      <div>
+      <div data-testid="clusterProvider__label">
         <label>{{ t('glance.provider') }}: </label>
         <span v-if="isHarvesterCluster">
           <a
@@ -520,7 +589,7 @@ export default {
           {{ displayProvider }}
         </span>
       </div>
-      <div>
+      <div data-testid="kubernetesVersion__label">
         <label>{{ t('glance.version') }}: </label>
         <span>{{ currentCluster.kubernetesVersionBase }}</span>
         <span
@@ -528,7 +597,16 @@ export default {
           style="font-size: 0.75em"
         >{{ currentCluster.kubernetesVersionExtension }}</span>
       </div>
-      <div>
+      <div
+        v-if="nodes.length > 0"
+        data-testid="architecture__label"
+      >
+        <label>{{ t('glance.architecture') }}: </label>
+        <span v-clean-tooltip="architecture.tooltip">
+          {{ architecture.label }}
+        </span>
+      </div>
+      <div data-testid="created__label">
         <label>{{ t('glance.created') }}: </label>
         <span><LiveDate
           :value="currentCluster.metadata.creationTimestamp"
@@ -537,17 +615,13 @@ export default {
         /></span>
       </div>
       <div :style="{'flex':1}" />
-      <div v-if="!monitoringStatus.v2 && !monitoringStatus.v1">
-        <n-link
+      <div v-if="showClusterTools">
+        <router-link
           :to="{name: 'c-cluster-explorer-tools'}"
-          class="monitoring-install"
+          class="cluster-tools-link"
         >
-          <i class="icon icon-gear" />
-          <span>{{ t('glance.installMonitoring') }}</span>
-        </n-link>
-      </div>
-      <div v-if="monitoringStatus.v1">
-        <span>{{ t('glance.v1MonitoringInstalled') }}</span>
+          <span>{{ t('nav.clusterTools') }}</span>
+        </router-link>
       </div>
       <ConfigBadge
         v-if="currentCluster.canUpdate"
@@ -589,13 +663,13 @@ export default {
     </div>
 
     <h3
-      v-if="!hasV1Monitoring && hasStats"
+      v-if="hasStats"
       class="mt-40"
     >
       {{ t('clusterIndexPage.sections.capacity.label') }}
     </h3>
     <div
-      v-if="!hasV1Monitoring && hasStats"
+      v-if="hasStats"
       class="hardware-resource-gauges"
     >
       <HardwareResourceGauge
@@ -616,7 +690,7 @@ export default {
       />
     </div>
 
-    <div v-if="!hasV1Monitoring && clusterServices">
+    <div v-if="clusterServices">
       <div
         v-for="service in clusterServices"
         :key="service.name"
@@ -642,17 +716,6 @@ export default {
       </div>
     </div>
 
-    <div
-      v-if="hasV1Monitoring"
-      id="ember-anchor"
-      class="mt-20"
-    >
-      <EmberPage
-        inline="ember-anchor"
-        :src="v1MonitoringURL"
-      />
-    </div>
-
     <div class="mt-30">
       <Tabbed @changed="tabChange">
         <Tab
@@ -661,9 +724,9 @@ export default {
           :weight="2"
         >
           <span class="events-table-link">
-            <n-link :to="allEventsLink">
+            <router-link :to="allEventsLink">
               <span>{{ t('glance.eventsTable') }}</span>
-            </n-link>
+            </router-link>
           </span>
           <EventsTable />
         </Tab>
@@ -680,10 +743,10 @@ export default {
           :label="t('clusterIndexPage.sections.certs.label')"
           :weight="1"
         >
-          <span class="events-table-link">
-            <n-link :to="allSecretsLink">
+          <span class="cert-table-link">
+            <router-link :to="allSecretsLink">
               <span>{{ t('glance.secretsTable') }}</span>
-            </n-link>
+            </router-link>
           </span>
           <Certificates v-if="selectedTab === 'cluster-certs'" />
         </Tab>
@@ -762,9 +825,10 @@ export default {
 }
 
 .cluster-dashboard-glance {
+  align-items: center;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  padding: 20px 0px;
+  padding: 10px 0px;
   display: flex;
 
   &>*:not(:nth-last-child(-n+2)) {
@@ -776,8 +840,15 @@ export default {
   }
 }
 
-.title h1 {
-  margin: 0;
+.title {
+  h1 {
+    margin: 0;
+  }
+
+  .cluster-dashboard-description {
+    margin: 5px 0;
+    opacity: 0.7;
+  }
 }
 
 .actions-span {
@@ -803,9 +874,9 @@ export default {
   margin-top: 0;
 }
 
-.monitoring-install {
+.cluster-tools-link {
   display: flex;
-  margin-left: 10px;
+  margin-right: 10px;
 
   > I {
     line-height: inherit;
@@ -817,7 +888,7 @@ export default {
   }
 }
 
-.events-table-link {
+.events-table-link, .cert-table-link {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 20px;

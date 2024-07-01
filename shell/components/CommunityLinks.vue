@@ -8,6 +8,7 @@ import { mapGetters } from 'vuex';
 import { isRancherPrime } from '@shell/config/version';
 import { fetchLinks } from '@shell/config/home-links';
 
+// i18n-ignore footer.wechat.title, footer.wechat.modalText, footer.wechat.modalText2
 export default {
   name: 'CommunityLinks',
 
@@ -106,12 +107,12 @@ export default {
         :key="link.label"
         class="support-link"
       >
-        <n-link
+        <router-link
           v-if="link.value.startsWith('/') "
           :to="link.value"
         >
           {{ link.label }}
-        </n-link>
+        </router-link>
         <a
           v-else
           :href="link.value"

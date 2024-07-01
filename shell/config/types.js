@@ -17,7 +17,7 @@ export const NORMAN = {
   ETCD_BACKUP:                   'etcdbackup',
   CLUSTER:                       'cluster',
   CLUSTER_TOKEN:                 'clusterregistrationtoken',
-  CLUSTER_ROLE_TEMPLATE_BINDING: 'clusterRoleTemplateBinding',
+  CLUSTER_ROLE_TEMPLATE_BINDING: 'clusterroletemplatebinding',
   CLOUD_CREDENTIAL:              'cloudcredential',
   FLEET_WORKSPACES:              'fleetworkspace',
   GLOBAL_ROLE:                   'globalRole',
@@ -29,10 +29,13 @@ export const NORMAN = {
   PRINCIPAL:                     'principal',
   PROJECT:                       'project',
   PROJECT_ROLE_TEMPLATE_BINDING: 'projectroletemplatebinding',
+  SETTING:                       'setting',
   SPOOFED:                       { GROUP_PRINCIPAL: 'group.principal' },
   ROLE_TEMPLATE:                 'roleTemplate',
   TOKEN:                         'token',
   USER:                          'user',
+  KONTAINER_DRIVER:              'kontainerDriver',
+  NODE_DRIVER:                   'nodeDriver'
 };
 
 // Public (via Norman)
@@ -188,6 +191,7 @@ export const MANAGEMENT = {
   GLOBAL_DNS_PROVIDER:           'management.cattle.io.globaldnsprovider',
   RKE_TEMPLATE:                  'management.cattle.io.clustertemplate',
   RKE_TEMPLATE_REVISION:         'management.cattle.io.clustertemplaterevision',
+  CLUSTER_PROXY_CONFIG:          'management.cattle.io.clusterproxyconfig'
 };
 
 export const CAPI = {
@@ -280,7 +284,8 @@ export const UI = { NAV_LINK: 'ui.cattle.io.navlink' };
 export const VIRTUAL_TYPES = {
   CLUSTER_MEMBERS:    'cluster-members',
   PROJECT_NAMESPACES: 'projects-namespaces',
-  NAMESPACES:         'namespaces'
+  NAMESPACES:         'namespaces',
+  JWT_AUTHENTICATION: 'jwt.authentication'
 };
 
 // harvester
@@ -288,6 +293,7 @@ export const HCI = {
   CLUSTER:          'harvesterhci.io.management.cluster',
   DASHBOARD:        'harvesterhci.io.dashboard',
   IMAGE:            'harvesterhci.io.virtualmachineimage',
+  VGPU_DEVICE:      'devices.harvesterhci.io.vgpudevice',
   SETTING:          'harvesterhci.io.setting',
   HARVESTER_CONFIG: 'rke-machine-config.cattle.io.harvesterconfig',
 };
@@ -310,3 +316,16 @@ export const AUTH_TYPE = {
 };
 
 export const LOCAL_CLUSTER = 'local';
+
+export const CLUSTER_REPO_TYPES = {
+  HELM_URL: 'helm-url',
+  GIT_REPO: 'git-repo',
+  OCI_URL:  'oci-url'
+};
+
+export const ZERO_TIME = '0001-01-01T00:00:00Z';
+
+export const DEFAULT_GRAFANA_STORAGE_SIZE = '10Gi';
+
+export const DEPRECATED = 'Deprecated';
+export const EXPERIMENTAL = 'Experimental';
